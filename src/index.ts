@@ -5,6 +5,7 @@ import readline from "node:readline/promises";
 import path from "node:path";
 import process from "node:process";
 import { Writable } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 import packageJson from "../package.json" with { type: "json" };
 
 type Flags = Record<string, string | boolean>;
@@ -36,12 +37,17 @@ type GraphQLPayload<T> = {
   message?: string;
 };
 
+type BufferPost = {
+  id: string;
+  text: string;
+  status?: string;
+  sentAt?: string | null;
+  externalLink?: string | null;
+};
+
 type CreatePostResult = {
   createPost?: {
-    post?: {
-      id: string;
-      text: string;
-    };
+    post?: BufferPost;
     message?: string;
   };
 };
@@ -684,6 +690,9 @@ async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags):
         post {
           id
           text
+          status
+          sentAt
+          externalLink
         }
       }
       ... on MutationError {
@@ -707,7 +716,19 @@ async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags):
     throw new Error(result.message);
   }
 
+  if (mode === "publish-now" && result.post?.id && !result.post.externalLink) {
+    const latestPost = await waitForPublishedPostUrl(apiKey, result.post.id);
+    if (latestPost?.externalLink) {
+      result.post = latestPost;
+    }
+  }
+
   console.log(JSON.stringify(result, null, 2));
+
+  if (result.post?.externalLink) {
+    console.log("");
+    console.log(`Posted URL: ${result.post.externalLink}`);
+  }
 }
 
 async function buildMetadataClause({
@@ -786,6 +807,48 @@ async function getChannelById(apiKey: string, channelId: string): Promise<Channe
     service: String(record.service ?? "unknown"),
     raw: data.channel
   };
+}
+
+async function getPostById(apiKey: string, postId: string): Promise<BufferPost | null> {
+  const data = await bufferGraphQLRequest<{ post?: unknown }>({
+    apiKey,
+    query: `query GetPost {
+      post(input: { id: ${JSON.stringify(postId)} }) {
+        id
+        text
+        status
+        sentAt
+        externalLink
+      }
+    }`
+  });
+
+  if (!data.post || typeof data.post !== "object") {
+    return null;
+  }
+
+  const record = data.post as Record<string, unknown>;
+
+  return {
+    id: String(record.id ?? ""),
+    text: String(record.text ?? ""),
+    status: typeof record.status === "string" ? record.status : undefined,
+    sentAt: typeof record.sentAt === "string" ? record.sentAt : null,
+    externalLink: typeof record.externalLink === "string" ? record.externalLink : null
+  };
+}
+
+async function waitForPublishedPostUrl(apiKey: string, postId: string): Promise<BufferPost | null> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const post = await getPostById(apiKey, postId);
+    if (post?.externalLink) {
+      return post;
+    }
+
+    await sleep(1500);
+  }
+
+  return null;
 }
 
 async function resolveChannel(apiKey: string, channelInput: string, flags: Flags): Promise<Channel> {

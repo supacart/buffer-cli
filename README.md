@@ -111,6 +111,12 @@ buffer publish-now \
   --text "We help teams ship software without the usual chaos."
 ```
 
+When Buffer provides the network URL after a successful `publish-now`, the CLI prints:
+
+```text
+Posted URL: https://...
+```
+
 ## Command Reference
 
 ```bash
@@ -132,6 +138,7 @@ buffer publish-now --channel facebook --draft .social/drafts/2026-03-19_some-pos
 - `--channel` accepts either a raw Buffer channel ID or a simple alias like `facebook`, `tiktok`, or `twitter`.
 - Facebook publish calls automatically default to `type: post` when the target channel is Facebook.
 - `schedule` and `publish-now` use Buffer's GraphQL `createPost` mutation pattern.
+- `publish-now` prints `Posted URL: ...` when Buffer returns the external post link.
 - For local development in this repo, `pnpm social ...` still works and now runs the TypeScript source directly.
 
 ## Release Plan
