@@ -115,8 +115,8 @@ Usage:
   buffer list-channels [--org ORGANIZATION_ID] [--json]
   buffer draft --text "Post copy" [--slug launch-post] [--channel-hint facebook]
   buffer drafts [--json]
-  buffer schedule --channel CHANNEL_ID (--text "Post copy" | --draft PATH) [--type post|story|reel] --at 2026-03-20T09:00:00Z
-  buffer publish-now --channel CHANNEL_ID (--text "Post copy" | --draft PATH) [--type post|story|reel]
+  buffer schedule --channel CHANNEL (--text "Post copy" | --draft PATH) [--type post|story|reel] --at 2026-03-20T09:00:00Z
+  buffer publish-now --channel CHANNEL (--text "Post copy" | --draft PATH) [--type post|story|reel]
 
 Environment:
   BUFFER_API_KEY       Required for schedule and publish-now, and preferred for list-channels
@@ -180,6 +180,10 @@ function slugify(input: string): string {
 
 function getStringFlag(value: string | boolean | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function looksLikeChannelId(value: string): boolean {
+  return /^[a-f0-9]{24}$/i.test(value);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -464,6 +468,12 @@ async function listDrafts(flags: Flags): Promise<void> {
 }
 
 async function listChannels(flags: Flags): Promise<void> {
+  const channels = await getChannels(flags);
+
+  printChannels(channels, flags);
+}
+
+async function getChannels(flags: Flags): Promise<Channel[]> {
   const apiKey = process.env.BUFFER_API_KEY;
   const accessToken = process.env.BUFFER_ACCESS_TOKEN;
   const organizationId = getStringFlag(flags.org) || process.env.BUFFER_ORGANIZATION_ID;
@@ -486,8 +496,7 @@ async function listChannels(flags: Flags): Promise<void> {
       const channels = normalizeChannels(data);
 
       if (channels.length > 0) {
-        printChannels(channels, flags);
-        return;
+        return channels;
       }
     } catch (error) {
       errors.push(`GraphQL channels query: ${getErrorMessage(error)}`);
@@ -509,8 +518,7 @@ async function listChannels(flags: Flags): Promise<void> {
       const channels = normalizeLegacyProfiles(data);
 
       if (channels.length > 0) {
-        printChannels(channels, flags);
-        return;
+        return channels;
       }
     } catch (error) {
       errors.push(`Legacy profiles with bearer token: ${getErrorMessage(error)}`);
@@ -526,8 +534,7 @@ async function listChannels(flags: Flags): Promise<void> {
       const channels = normalizeLegacyProfiles(data);
 
       if (channels.length > 0) {
-        printChannels(channels, flags);
-        return;
+        return channels;
       }
     } catch (error) {
       errors.push(`Legacy profiles with query token: ${getErrorMessage(error)}`);
@@ -539,6 +546,46 @@ async function listChannels(flags: Flags): Promise<void> {
       errors.length > 0 ? `Tried:\n- ${errors.join("\n- ")}` : "No valid authentication method was available."
     }`
   );
+}
+
+function findChannelsByAlias(channels: Channel[], alias: string): Channel[] {
+  const normalizedAlias = normalizeAlias(alias);
+
+  return channels.filter((channel) => {
+    const candidates = [
+      channel.service,
+      channel.name,
+      getDescriptor(channel.raw),
+      getFormattedUsername(channel.raw)
+    ];
+
+    return candidates.some((candidate) => normalizeAlias(candidate) === normalizedAlias);
+  });
+}
+
+function normalizeAlias(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function getDescriptor(raw: unknown): string {
+  if (!raw || typeof raw !== "object") {
+    return "";
+  }
+
+  const record = raw as Record<string, unknown>;
+  return String(record.descriptor ?? "");
+}
+
+function getFormattedUsername(raw: unknown): string {
+  if (!raw || typeof raw !== "object") {
+    return "";
+  }
+
+  const record = raw as Record<string, unknown>;
+  return String(record.formatted_username ?? record.service_username ?? "");
 }
 
 function normalizeChannels(data: { channels?: unknown[]; accounts?: unknown[] | { nodes?: unknown[] } }): Channel[] {
@@ -605,9 +652,14 @@ function printChannels(channels: Channel[], flags: Flags): void {
 
 async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags): Promise<void> {
   const apiKey = requireValue(process.env.BUFFER_API_KEY, "Set BUFFER_API_KEY first.");
-  const channelId = requireValue(getStringFlag(flags.channel), "Provide --channel with the Buffer channel ID.");
+  const channelInput = requireValue(
+    getStringFlag(flags.channel),
+    "Provide --channel with the Buffer channel ID or a channel alias like facebook."
+  );
+  const channel = await resolveChannel(apiKey, channelInput, flags);
+  const channelId = channel.id;
   const text = await resolvePostText(flags);
-  const metadataClause = await buildMetadataClause({ apiKey, channelId, flags });
+  const metadataClause = await buildMetadataClause({ flags, channel });
 
   let bufferMode = "shareNow";
   let dueAtClause = "";
@@ -659,16 +711,14 @@ async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags):
 }
 
 async function buildMetadataClause({
-  apiKey,
-  channelId,
-  flags
+  flags,
+  channel
 }: {
-  apiKey: string;
-  channelId: string;
   flags: Flags;
+  channel: Channel;
 }): Promise<string> {
   const typeFlag = getStringFlag(flags.type);
-  const channelHint = await resolveChannelHint({ apiKey, channelId, flags });
+  const channelHint = await resolveChannelHint({ channel, flags });
 
   if (channelHint !== "facebook") {
     return "";
@@ -680,12 +730,10 @@ async function buildMetadataClause({
 }
 
 async function resolveChannelHint({
-  apiKey,
-  channelId,
+  channel,
   flags
 }: {
-  apiKey: string;
-  channelId: string;
+  channel: Channel;
   flags: Flags;
 }): Promise<string | undefined> {
   const explicitHint = getStringFlag(flags["channel-hint"]);
@@ -701,7 +749,6 @@ async function resolveChannelHint({
     }
   }
 
-  const channel = await getChannelById(apiKey, channelId);
   return channel?.service;
 }
 
@@ -739,6 +786,33 @@ async function getChannelById(apiKey: string, channelId: string): Promise<Channe
     service: String(record.service ?? "unknown"),
     raw: data.channel
   };
+}
+
+async function resolveChannel(apiKey: string, channelInput: string, flags: Flags): Promise<Channel> {
+  if (looksLikeChannelId(channelInput)) {
+    const channel = await getChannelById(apiKey, channelInput);
+    if (!channel) {
+      throw new Error(`Could not find a Buffer channel with ID ${channelInput}.`);
+    }
+
+    return channel;
+  }
+
+  const channels = await getChannels(flags);
+  const matches = findChannelsByAlias(channels, channelInput);
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  if (matches.length > 1) {
+    const options = matches.map((channel) => `${channel.id}\t${channel.service}\t${channel.name}`).join("\n");
+    throw new Error(
+      `Channel alias "${channelInput}" matched multiple channels. Use a channel ID instead.\n${options}`
+    );
+  }
+
+  throw new Error(`Could not resolve channel alias "${channelInput}". Run "buffer list-channels" to see available channels.`);
 }
 
 async function bufferGraphQLRequest<T>({ apiKey, query }: { apiKey: string; query: string }): Promise<T> {

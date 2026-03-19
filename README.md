@@ -35,7 +35,7 @@ buffer setup
 buffer list-channels
 buffer draft --text "We help teams ship software without the usual chaos." --channel-hint facebook
 buffer drafts
-buffer schedule --channel your_facebook_channel_id --draft .social/drafts/your_draft_file.json --at 2026-03-20T09:00:00Z
+buffer schedule --channel facebook --draft .social/drafts/your_draft_file.json --at 2026-03-20T09:00:00Z
 ```
 
 ## What it does
@@ -91,7 +91,7 @@ Schedule the draft:
 
 ```bash
 buffer schedule \
-  --channel your_facebook_channel_id \
+  --channel facebook \
   --draft .social/drafts/your_draft_file.json \
   --at 2026-03-20T09:00:00Z
 ```
@@ -107,7 +107,7 @@ Or publish immediately:
 
 ```bash
 buffer publish-now \
-  --channel your_facebook_channel_id \
+  --channel facebook \
   --text "We help teams ship software without the usual chaos."
 ```
 
@@ -120,8 +120,8 @@ buffer setup
 buffer list-channels --org your_organization_id
 buffer draft --text "We just shipped a new client portal." --channel-hint facebook
 buffer drafts
-buffer schedule --channel your_channel_id --text "Shipping updates this week." --at 2026-03-20T09:00:00Z [--type post|story|reel]
-buffer publish-now --channel your_channel_id --draft .social/drafts/2026-03-19_some-post.json [--type post|story|reel]
+buffer schedule --channel facebook --text "Shipping updates this week." --at 2026-03-20T09:00:00Z [--type post|story|reel]
+buffer publish-now --channel facebook --draft .social/drafts/2026-03-19_some-post.json [--type post|story|reel]
 ```
 
 ## Notes
@@ -129,6 +129,7 @@ buffer publish-now --channel your_channel_id --draft .social/drafts/2026-03-19_s
 - This is an unofficial Buffer CLI.
 - `draft` is local on purpose. Buffer draft behavior is less stable in the public docs than post creation.
 - `list-channels` uses Buffer's GraphQL API when `BUFFER_ORGANIZATION_ID` is available, then falls back to Buffer's legacy profiles endpoint if `BUFFER_ACCESS_TOKEN` is available.
+- `--channel` accepts either a raw Buffer channel ID or a simple alias like `facebook`, `tiktok`, or `twitter`.
 - Facebook publish calls automatically default to `type: post` when the target channel is Facebook.
 - `schedule` and `publish-now` use Buffer's GraphQL `createPost` mutation pattern.
 - For local development in this repo, `pnpm social ...` still works and now runs the TypeScript source directly.
