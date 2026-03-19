@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import fs from "node:fs/promises";
+import readline from "node:readline/promises";
 import path from "node:path";
 import process from "node:process";
+import { Writable } from "node:stream";
 import packageJson from "../package.json" with { type: "json" };
 
 type Flags = Record<string, string | boolean>;
@@ -42,9 +44,19 @@ type CreatePostResult = {
   };
 };
 
+type ShellName = "zsh" | "bash";
+
+type SetupConfig = {
+  apiKey: string;
+  organizationId: string;
+  accessToken?: string;
+};
+
 const BUFFER_GRAPHQL_URL = "https://api.buffer.com";
 const BUFFER_LEGACY_BASE_URL = "https://api.bufferapp.com/1";
 const DEFAULT_DRAFT_DIR = path.join(process.cwd(), ".social", "drafts");
+const BUFFER_SETUP_START = "# >>> buffer-cli >>>";
+const BUFFER_SETUP_END = "# <<< buffer-cli <<<";
 
 async function main(): Promise<void> {
   const { positionals, flags } = parseArgs(process.argv.slice(2));
@@ -70,6 +82,9 @@ async function main(): Promise<void> {
       case "drafts":
         await listDrafts(flags);
         break;
+      case "setup":
+        await runSetup(flags);
+        break;
       case "list-channels":
         await listChannels(flags);
         break;
@@ -94,6 +109,7 @@ function printHelp(): void {
 Usage:
   buffer help
   buffer version
+  buffer setup [--shell zsh|bash] [--profile PATH]
   buffer list-channels [--org ORGANIZATION_ID] [--json]
   buffer draft --text "Post copy" [--slug launch-post] [--channel-hint facebook]
   buffer drafts [--json]
@@ -166,6 +182,171 @@ function getStringFlag(value: string | boolean | undefined): string | undefined 
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function getHomeDir(): string {
+  return requireValue(process.env.HOME, "Could not determine the current home directory.");
+}
+
+function detectShell(value: string | undefined): ShellName {
+  const shell = path.basename(value || "");
+
+  if (shell === "bash") {
+    return "bash";
+  }
+
+  return "zsh";
+}
+
+function getDefaultProfilePath(shell: ShellName): string {
+  return path.join(getHomeDir(), shell === "bash" ? ".bashrc" : ".zshrc");
+}
+
+function getShellProfile(flags: Flags): { shell: ShellName; profilePath: string } {
+  const shellFlag = getStringFlag(flags.shell);
+  const shell = shellFlag === "bash" || shellFlag === "zsh" ? shellFlag : detectShell(process.env.SHELL);
+  const profileFlag = getStringFlag(flags.profile);
+
+  return {
+    shell,
+    profilePath: path.resolve(profileFlag || getDefaultProfilePath(shell))
+  };
+}
+
+async function runSetup(flags: Flags): Promise<void> {
+  const { shell, profilePath } = getShellProfile(flags);
+  const setupConfig = await collectSetupConfig(flags);
+  const profileBlock = buildProfileBlock(setupConfig);
+  const currentProfile = await readOptionalFile(profilePath);
+  const nextProfile = upsertProfileBlock(currentProfile, profileBlock);
+
+  await fs.writeFile(profilePath, nextProfile, "utf8");
+
+  console.log(`Saved Buffer credentials to ${profilePath}`);
+  console.log("");
+  console.log("Next step:");
+  console.log(`  source ${profilePath}`);
+  console.log("");
+  console.log("Then test:");
+  console.log("  buffer list-channels");
+  console.log("");
+  console.log(`Shell detected: ${shell}`);
+}
+
+async function collectSetupConfig(flags: Flags): Promise<SetupConfig> {
+  const apiKeyFlag = getStringFlag(flags["api-key"]);
+  const organizationIdFlag = getStringFlag(flags.org);
+  const accessTokenFlag = getStringFlag(flags["access-token"]);
+  const shouldPrompt = process.stdin.isTTY && process.stdout.isTTY;
+
+  const apiKey = apiKeyFlag || process.env.BUFFER_API_KEY || (shouldPrompt ? await promptSecret("Buffer API key: ") : undefined);
+  const organizationId =
+    organizationIdFlag ||
+    process.env.BUFFER_ORGANIZATION_ID ||
+    (shouldPrompt ? await promptValue("Buffer organization ID: ") : undefined);
+  let accessToken = accessTokenFlag || process.env.BUFFER_ACCESS_TOKEN;
+
+  if (!accessToken && shouldPrompt) {
+    accessToken = await promptValue("Optional Buffer access token (press Enter to skip): ");
+  }
+
+  return {
+    apiKey: requireValue(apiKey, "Missing Buffer API key. Pass --api-key or run setup in an interactive terminal."),
+    organizationId: requireValue(
+      organizationId,
+      "Missing Buffer organization ID. Pass --org or run setup in an interactive terminal."
+    ),
+    accessToken: accessToken?.trim() ? accessToken.trim() : undefined
+  };
+}
+
+async function promptValue(prompt: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  try {
+    return (await rl.question(prompt)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptSecret(prompt: string): Promise<string> {
+  let muted = false;
+  const mutableStdout = new Writable({
+    write(chunk, encoding, callback) {
+      if (!muted) {
+        process.stdout.write(chunk, encoding as BufferEncoding);
+      }
+      callback();
+    }
+  });
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: mutableStdout
+  });
+
+  try {
+    process.stdout.write(prompt);
+    muted = true;
+    const value = await rl.question("");
+    muted = false;
+    process.stdout.write("\n");
+    return value.trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function readOptionalFile(filePath: string): Promise<string> {
+  try {
+    return await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    const message = getErrorMessage(error);
+    if (message.includes("ENOENT")) {
+      return "";
+    }
+    throw error;
+  }
+}
+
+function buildProfileBlock(config: SetupConfig): string {
+  const lines = [
+    BUFFER_SETUP_START,
+    "# Added by buffer setup",
+    `export BUFFER_API_KEY=${JSON.stringify(config.apiKey)}`,
+    `export BUFFER_ORGANIZATION_ID=${JSON.stringify(config.organizationId)}`
+  ];
+
+  if (config.accessToken) {
+    lines.push(`export BUFFER_ACCESS_TOKEN=${JSON.stringify(config.accessToken)}`);
+  }
+
+  lines.push(BUFFER_SETUP_END);
+
+  return lines.join("\n");
+}
+
+function upsertProfileBlock(currentProfile: string, profileBlock: string): string {
+  const trimmedCurrent = currentProfile.trimEnd();
+  const blockPattern = new RegExp(`${escapeRegExp(BUFFER_SETUP_START)}[\\s\\S]*?${escapeRegExp(BUFFER_SETUP_END)}`, "m");
+
+  if (blockPattern.test(trimmedCurrent)) {
+    return `${trimmedCurrent.replace(blockPattern, profileBlock)}\n`;
+  }
+
+  if (trimmedCurrent.length === 0) {
+    return `${profileBlock}\n`;
+  }
+
+  return `${trimmedCurrent}\n\n${profileBlock}\n`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function ensureDir(dirPath: string): Promise<void> {

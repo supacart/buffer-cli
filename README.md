@@ -24,13 +24,13 @@ Then run:
 ```bash
 buffer help
 buffer version
+buffer setup
 ```
 
 ## Quick Start
 
 ```bash
-export BUFFER_API_KEY=your_api_key_here
-export BUFFER_ORGANIZATION_ID=your_organization_id_here
+buffer setup
 
 buffer list-channels
 buffer draft --text "We help teams ship software without the usual chaos." --channel-hint facebook
@@ -47,16 +47,23 @@ buffer schedule --channel your_facebook_channel_id --draft .social/drafts/your_d
 
 ## Setup
 
-1. Generate a Buffer API key in `https://publish.buffer.com/settings/api`
-2. Export it:
+The easiest way is:
+
+```bash
+buffer setup
+```
+
+`buffer setup` will:
+
+- detect whether you use `zsh` or `bash`
+- ask for your Buffer API key
+- ask for your Buffer organization ID
+- save them into the right shell profile
+
+If you prefer to set values manually, you can still export them yourself:
 
 ```bash
 export BUFFER_API_KEY=your_api_key_here
-```
-
-If you want `list-channels` through Buffer's GraphQL API, also set your organization ID:
-
-```bash
 export BUFFER_ORGANIZATION_ID=your_organization_id_here
 ```
 
@@ -102,6 +109,7 @@ buffer publish-now \
 ```bash
 buffer help
 buffer version
+buffer setup
 buffer list-channels --org your_organization_id
 buffer draft --text "We just shipped a new client portal." --channel-hint facebook
 buffer drafts
