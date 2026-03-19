@@ -28,7 +28,7 @@
     "README.md"
   ],
   "bin": {
-    "buffer": "./dist/index.js"
+    "buffer": "dist/index.js"
   },
   "scripts": {
     "buffer": "node ./src/index.ts",
