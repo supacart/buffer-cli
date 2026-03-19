@@ -15,8 +15,8 @@ pnpm add -g @supacart/buffer-cli
 Then run:
 
 ```bash
-buffer-cli help
-buffer-cli version
+buffer help
+buffer version
 ```
 
 ## What it does
@@ -50,12 +50,12 @@ export BUFFER_ACCESS_TOKEN=your_legacy_access_token
 ## Commands
 
 ```bash
-buffer-cli help
-buffer-cli list-channels --org your_organization_id
-buffer-cli draft --text "We just shipped a new client portal." --channel-hint facebook
-buffer-cli drafts
-buffer-cli schedule --channel your_channel_id --text "Shipping updates this week." --at 2026-03-20T09:00:00Z
-buffer-cli publish-now --channel your_channel_id --draft .social/drafts/2026-03-19_some-post.json
+buffer help
+buffer list-channels --org your_organization_id
+buffer draft --text "We just shipped a new client portal." --channel-hint facebook
+buffer drafts
+buffer schedule --channel your_channel_id --text "Shipping updates this week." --at 2026-03-20T09:00:00Z
+buffer publish-now --channel your_channel_id --draft .social/drafts/2026-03-19_some-post.json
 ```
 
 ## Notes
@@ -63,7 +63,7 @@ buffer-cli publish-now --channel your_channel_id --draft .social/drafts/2026-03-
 - `draft` is local on purpose. Buffer draft behavior is less stable in the public docs than post creation.
 - `list-channels` uses Buffer's GraphQL API when `BUFFER_ORGANIZATION_ID` is available, then falls back to Buffer's legacy profiles endpoint if `BUFFER_ACCESS_TOKEN` is available.
 - `schedule` and `publish-now` use Buffer's GraphQL `createPost` mutation pattern.
-- For local development in this repo, `pnpm social ...` still works.
+- For local development in this repo, `pnpm social ...` still works and now runs the TypeScript source directly.
 
 ## Release Plan
 

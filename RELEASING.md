@@ -79,7 +79,7 @@ After publish:
 
 ```bash
 pnpm add -g @supacart/buffer-cli
-buffer-cli version
+buffer version
 ```
 
 ## Notes

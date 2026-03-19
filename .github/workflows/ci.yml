@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
@@ -30,6 +30,9 @@ jobs:
 
       - name: Check CLI syntax
         run: pnpm check
+
+      - name: Show built CLI version
+        run: node ./dist/index.js version
 
       - name: Show help output
         run: pnpm social help

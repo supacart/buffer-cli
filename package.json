@@ -21,19 +21,24 @@
     "scheduler"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "files": [
-    "index.mjs",
+    "dist",
     "README.md"
   ],
   "bin": {
-    "buffer-cli": "./index.mjs"
+    "buffer": "./dist/index.js"
   },
   "scripts": {
-    "social": "node ./index.mjs",
-    "check": "node --check ./index.mjs",
+    "buffer": "node ./src/index.ts",
+    "build": "pnpm exec tsc -p tsconfig.json",
+    "social": "node ./src/index.ts",
+    "check": "pnpm build",
     "prepublishOnly": "pnpm check"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
   },
   "publishConfig": {
     "access": "public"
