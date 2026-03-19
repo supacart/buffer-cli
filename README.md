@@ -1,10 +1,17 @@
 # Buffer CLI
 
-Tiny unofficial CLI for drafting posts and publishing them to Buffer.
+Terminal-first CLI for drafting posts and publishing them to Buffer.
 
 Package: `@supacart/buffer-cli`
 
 Repo: `github.com/supacart/buffer-cli`
+
+Use it when you want a simple way to:
+
+- draft posts locally
+- list your connected Buffer channels
+- schedule a post from the terminal
+- publish a post immediately
 
 ## Install
 
@@ -17,6 +24,18 @@ Then run:
 ```bash
 buffer help
 buffer version
+```
+
+## Quick Start
+
+```bash
+export BUFFER_API_KEY=your_api_key_here
+export BUFFER_ORGANIZATION_ID=your_organization_id_here
+
+buffer list-channels
+buffer draft --text "We help teams ship software without the usual chaos." --channel-hint facebook
+buffer drafts
+buffer schedule --channel your_facebook_channel_id --draft .social/drafts/your_draft_file.json --at 2026-03-20T09:00:00Z
 ```
 
 ## What it does
@@ -47,10 +66,42 @@ Optional legacy token fallback for older profile listing:
 export BUFFER_ACCESS_TOKEN=your_legacy_access_token
 ```
 
-## Commands
+## Facebook Example
+
+List your channels and copy the Facebook channel ID:
+
+```bash
+buffer list-channels
+```
+
+Create a draft:
+
+```bash
+buffer draft --text "We help teams ship software without the usual chaos." --channel-hint facebook
+```
+
+Schedule the draft:
+
+```bash
+buffer schedule \
+  --channel your_facebook_channel_id \
+  --draft .social/drafts/your_draft_file.json \
+  --at 2026-03-20T09:00:00Z
+```
+
+Or publish immediately:
+
+```bash
+buffer publish-now \
+  --channel your_facebook_channel_id \
+  --text "We help teams ship software without the usual chaos."
+```
+
+## Command Reference
 
 ```bash
 buffer help
+buffer version
 buffer list-channels --org your_organization_id
 buffer draft --text "We just shipped a new client portal." --channel-hint facebook
 buffer drafts
@@ -60,6 +111,7 @@ buffer publish-now --channel your_channel_id --draft .social/drafts/2026-03-19_s
 
 ## Notes
 
+- This is an unofficial Buffer CLI.
 - `draft` is local on purpose. Buffer draft behavior is less stable in the public docs than post creation.
 - `list-channels` uses Buffer's GraphQL API when `BUFFER_ORGANIZATION_ID` is available, then falls back to Buffer's legacy profiles endpoint if `BUFFER_ACCESS_TOKEN` is available.
 - `schedule` and `publish-now` use Buffer's GraphQL `createPost` mutation pattern.
