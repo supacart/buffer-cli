@@ -1,0 +1,41 @@
+{
+  "name": "@supacart/buffer-cli",
+  "version": "0.1.0",
+  "description": "Unofficial CLI for drafting and publishing Buffer posts.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supacart/buffer-cli.git"
+  },
+  "homepage": "https://github.com/supacart/buffer-cli#readme",
+  "bugs": {
+    "url": "https://github.com/supacart/buffer-cli/issues"
+  },
+  "keywords": [
+    "buffer",
+    "cli",
+    "social-media",
+    "facebook",
+    "scheduler"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "index.mjs",
+    "README.md"
+  ],
+  "bin": {
+    "buffer-cli": "./index.mjs"
+  },
+  "scripts": {
+    "social": "node ./index.mjs",
+    "check": "node --check ./index.mjs",
+    "prepublishOnly": "pnpm check"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
