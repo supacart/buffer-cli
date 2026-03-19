@@ -27,6 +27,8 @@ type Channel = {
   raw: unknown;
 };
 
+type SupportedService = "facebook" | "instagram" | "linkedin" | "twitter" | "pinterest" | "googlebusiness" | "youtube" | "mastodon" | "startPage" | "threads" | "bluesky" | "tiktok";
+
 type GraphQLPayload<T> = {
   data?: T;
   errors?: Array<{ message: string }>;
@@ -113,8 +115,8 @@ Usage:
   buffer list-channels [--org ORGANIZATION_ID] [--json]
   buffer draft --text "Post copy" [--slug launch-post] [--channel-hint facebook]
   buffer drafts [--json]
-  buffer schedule --channel CHANNEL_ID (--text "Post copy" | --draft PATH) --at 2026-03-20T09:00:00Z
-  buffer publish-now --channel CHANNEL_ID (--text "Post copy" | --draft PATH)
+  buffer schedule --channel CHANNEL_ID (--text "Post copy" | --draft PATH) [--type post|story|reel] --at 2026-03-20T09:00:00Z
+  buffer publish-now --channel CHANNEL_ID (--text "Post copy" | --draft PATH) [--type post|story|reel]
 
 Environment:
   BUFFER_API_KEY       Required for schedule and publish-now, and preferred for list-channels
@@ -354,6 +356,12 @@ async function ensureDir(dirPath: string): Promise<void> {
 }
 
 async function readDraftText(draftPath: string): Promise<string> {
+  const payload = await readDraftPayload(draftPath);
+
+  return payload.text;
+}
+
+async function readDraftPayload(draftPath: string): Promise<DraftPayload> {
   const raw = await fs.readFile(path.resolve(draftPath), "utf8");
   const parsed = JSON.parse(raw) as Partial<DraftPayload>;
 
@@ -361,7 +369,11 @@ async function readDraftText(draftPath: string): Promise<string> {
     throw new Error(`Draft file has no text: ${draftPath}`);
   }
 
-  return parsed.text;
+  return {
+    createdAt: String(parsed.createdAt ?? ""),
+    channelHint: parsed.channelHint ?? null,
+    text: parsed.text
+  };
 }
 
 async function resolvePostText(flags: Flags): Promise<string> {
@@ -595,6 +607,7 @@ async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags):
   const apiKey = requireValue(process.env.BUFFER_API_KEY, "Set BUFFER_API_KEY first.");
   const channelId = requireValue(getStringFlag(flags.channel), "Provide --channel with the Buffer channel ID.");
   const text = await resolvePostText(flags);
+  const metadataClause = await buildMetadataClause({ apiKey, channelId, flags });
 
   let bufferMode = "shareNow";
   let dueAtClause = "";
@@ -613,7 +626,7 @@ async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags):
       text: ${JSON.stringify(text)},
       channelId: ${JSON.stringify(channelId)},
       schedulingType: automatic,
-      mode: ${bufferMode}${dueAtClause}
+      mode: ${bufferMode}${dueAtClause}${metadataClause}
     }) {
       ... on PostActionSuccess {
         post {
@@ -643,6 +656,89 @@ async function createBufferPost(mode: "schedule" | "publish-now", flags: Flags):
   }
 
   console.log(JSON.stringify(result, null, 2));
+}
+
+async function buildMetadataClause({
+  apiKey,
+  channelId,
+  flags
+}: {
+  apiKey: string;
+  channelId: string;
+  flags: Flags;
+}): Promise<string> {
+  const typeFlag = getStringFlag(flags.type);
+  const channelHint = await resolveChannelHint({ apiKey, channelId, flags });
+
+  if (channelHint !== "facebook") {
+    return "";
+  }
+
+  const facebookType = validateFacebookPostType(typeFlag || "post");
+
+  return `, metadata: { facebook: { type: ${facebookType} } }`;
+}
+
+async function resolveChannelHint({
+  apiKey,
+  channelId,
+  flags
+}: {
+  apiKey: string;
+  channelId: string;
+  flags: Flags;
+}): Promise<string | undefined> {
+  const explicitHint = getStringFlag(flags["channel-hint"]);
+  if (explicitHint) {
+    return explicitHint;
+  }
+
+  const draftPath = getStringFlag(flags.draft);
+  if (draftPath) {
+    const draft = await readDraftPayload(draftPath);
+    if (draft.channelHint) {
+      return draft.channelHint;
+    }
+  }
+
+  const channel = await getChannelById(apiKey, channelId);
+  return channel?.service;
+}
+
+function validateFacebookPostType(value: string): "post" | "story" | "reel" {
+  if (value === "post" || value === "story" || value === "reel") {
+    return value;
+  }
+
+  throw new Error("Invalid Facebook post type. Use --type post, --type story, or --type reel.");
+}
+
+async function getChannelById(apiKey: string, channelId: string): Promise<Channel | null> {
+  const data = await bufferGraphQLRequest<{ channel?: unknown }>({
+    apiKey,
+    query: `query GetChannel {
+      channel(input: { id: ${JSON.stringify(channelId)} }) {
+        id
+        name
+        service
+        displayName
+        descriptor
+      }
+    }`
+  });
+
+  if (!data.channel || typeof data.channel !== "object") {
+    return null;
+  }
+
+  const record = data.channel as Record<string, unknown>;
+
+  return {
+    id: String(record.id ?? ""),
+    name: String(record.displayName ?? record.name ?? record.descriptor ?? "unknown"),
+    service: String(record.service ?? "unknown"),
+    raw: data.channel
+  };
 }
 
 async function bufferGraphQLRequest<T>({ apiKey, query }: { apiKey: string; query: string }): Promise<T> {
